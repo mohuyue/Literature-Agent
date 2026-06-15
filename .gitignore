@@ -1,0 +1,29 @@
+# API Key
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
+
+# Streamlit cache
+.streamlit/secrets.toml
+
+# Model cache
+.cache/
+
+# FAISS index
+*.faiss
+
+# Large files
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db

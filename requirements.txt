@@ -1,0 +1,14 @@
+streamlit
+openai
+pandas
+numpy
+faiss-cpu
+python-dotenv
+sentence-transformers
+modelscope
+pymupdf
+scikit-learn
+langchain
+langchain-core
+langchain-community
+langchain-openai
