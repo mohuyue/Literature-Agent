@@ -106,5 +106,5 @@ if user_input:
             with st.chat_message("assistant"):
                 answer = st.write_stream(
                     literature_review(plan_result["keyword"]) )
-                st.session_state.chat_history.append({"role":"assistant", "content":answer})
-                st.stop()
+        st.session_state.chat_history.append({"role":"assistant", "content":answer})
+        st.stop()

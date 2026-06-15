@@ -6,9 +6,20 @@ from agents.llm import llm_stream
 def literature_review(query, n_search=30, n_select=10):
     # 检索n_search篇文章
     papers = search_papers(query, n_search)
+    if len(papers) == 0:
+        yield """
+                ⚠️ 未检索到文献。
 
+                可能原因：
+                - OpenAlex服务暂时不可用
+                - 网络连接异常
+                - OpenAlex访问频率限制
+
+                请稍后重试。
+                """
+        return
     # 根据问题相关性排序后的前n_select篇文章
-    top_papers = rank_papers(query, papers, top_k=n_select)
+    top_papers = rank_papers(query, papers, top_k=min(n_select, len(papers)))
 
     # 拼接文章题目、摘要
     context = ""
@@ -37,7 +48,7 @@ def literature_review(query, n_search=30, n_select=10):
             要求：
             
             - 标题用论文原文输出，不用翻译成中文
-            - 仅根据标题和摘要进行总结
+            - 摘要总结成中文 尽量保留原意
             - 如果摘要缺失，摘要部分回答：搜索结果未包含摘要
             - 不要编造摘要中未提及的信息
             - 输出格式清晰易读, 开头可为：根据搜索结果 

@@ -1,7 +1,7 @@
 # Zotero Literature Reader Agent
 
 Academic literature reading and review assistant based on Zotero, RAG, and Large Language Models.
-<img width="747" height="772" alt="image" src="https://github.com/user-attachments/assets/4f4c07d7-7b98-4d25-9e47-679af7c28a4b" />
+![Main Interface](assets/main.png)
 
 ## Features
 
@@ -80,28 +80,23 @@ streamlit run app.py
 
 Example:
 
-Read paper:
-Structure and properties of polypropylene alloy
+阅读zotero文章
+Machine Learning-Driven Prediction of Polypropylene Alloy Properties
+![Literature Read](assets/read.png)
 
-The agent will:
-
-Search the Zotero library
-Open the corresponding PDF
-Build a RAG index
-Enter paper Q&A mode
 
 ### Ask questions about the paper
 
 Examples:
 
 Summarize this paper
-What are the main innovations?
+![Literature View](assets/review.png)
 
 ### Generate a literature review
 
 Examples:
-
-Recent studies on machine learning
-Machine learning in materials science
-
 The agent will search online literature and generate a review summary.
+Recent studies on machine learning in polymer materials science
+![Literature Search](assets/search.png)
+
+

@@ -24,8 +24,20 @@ def search_papers(query, n_search):
         "per-page": n_search # 搜索的论文数量
     }
     # 搜索
-    r = requests.get(url, params=params)
-    papers = r.json()["results"]
+    try:
+        r = requests.get(url, params=params, timeout=120)
+        if r.status_code != 200:
+            raise Exception(f"OpenAlex返回状态码: {r.status_code}")
+
+        data = r.json()
+        papers = data.get("results", [])
+
+    except Exception as e:
+        print("OpenAlex搜索失败")
+        print(e)
+        return []
+
+    results = []
 
     # 提取搜索结果中的有用信息
     results = []
