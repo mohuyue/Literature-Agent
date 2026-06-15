@@ -1,4 +1,4 @@
-# Literature Reader Agent
+# Zotero Literature Reader Agent
 
 Academic literature reading and review assistant based on Zotero, RAG, and Large Language Models.
 
