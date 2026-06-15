@@ -1,6 +1,7 @@
 # Zotero Literature Reader Agent
 
 Academic literature reading and review assistant based on Zotero, RAG, and Large Language Models.
+<img width="747" height="772" alt="image" src="https://github.com/user-attachments/assets/4f4c07d7-7b98-4d25-9e47-679af7c28a4b" />
 
 ## Features
 
@@ -10,11 +11,13 @@ Academic literature reading and review assistant based on Zotero, RAG, and Large
 - Online literature search and review generation
 - Streamlit web interface
 - Conversation memory for paper discussion
+<img width="731" height="742" alt="image" src="https://github.com/user-attachments/assets/f48fbf72-a67a-4e8e-befa-cd59f1919631" />
+<img width="730" height="707" alt="image" src="https://github.com/user-attachments/assets/bcfaca4c-c920-4a1b-abf3-18c18796376e" />
 
 ## Requirements
-Python 3.8–3.12
-Zotero installed
-Papers imported into Zotero with PDF attachments
+- Python 3.8–3.12
+- Zotero installed
+- Papers imported into Zotero with PDF attachments
 
 ## Installation
 git clone https://github.com/mohuyue/Literature-Agent.git
