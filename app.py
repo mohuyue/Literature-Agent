@@ -1,9 +1,8 @@
 import streamlit as st
-from zotero.zotero_search import load_zotero_library, build_zotero_index, search_zotero
-from zotero.zotero_pdf import get_pdf_path
-from rag.literature_read import build_pipeline, ask_pdf
-from review.literature_review import literature_review
-from agents.planner import plan
+from zotero.zotero_search import load_zotero_library, build_zotero_index
+from agents.agent import run_agent
+from agents.tools import tool_executor
+from memory.save_conversation import save_conversation
 
 # 全局变量
 if "current_title" not in st.session_state:
@@ -32,79 +31,62 @@ def load_library():
 with st.spinner("请关闭你的zotero，正在连接..."):
     papers, zotero_index = load_library()
 
-# 提取用户问题
-user_input = st.chat_input("请输入要阅读的zotero文献\文献问题\想网上搜索的论文...")
+# 工具执行器
+def my_tool_executor(name, args):
+    return tool_executor(
+        name,
+        args,
+        st.session_state,
+        papers,
+        zotero_index
+    )
+
+# 工具名称 → 中文状态提示的映射
+TOOL_STATUS_MAP = {
+    "open_zotero_paper":       "📖 正在 Zotero 中检索并加载论文...",
+    "retrieve_current_paper":  "🔍 正在检索论文相关内容...",
+    "search_online_literature": "🌐 正在网络搜索相关文献...",
+}
+
 # 显示历史消息
 for message in st.session_state.chat_history:
     with st.chat_message(message["role"]):
         st.markdown( message["content"])
 
-# 收到输入后调用planner规划任务        
-if user_input:
-    # 记录历史对话
-    st.session_state.chat_history.append({"role":"user", "content":user_input})
+# 提取用户问题
+user_input = st.chat_input("请输入要阅读的zotero文献\文献问题\想网上搜索的论文...")
 
+if user_input:
+    # 立即显示用户消息
     with st.chat_message("user"):
         st.markdown(user_input)
-    # 规划任务
-    plan_result = plan(user_input)
-    # 获取任务
-    task = plan_result["task"]
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
 
-    if task == "OPEN_ZOTERO":
-        keyword = plan_result["keyword"]
-        results = search_zotero(
-            keyword,
-            papers,
-            zotero_index,
-            top_k=1
-        )
+    # 收到输入后调用 agent 规划任务
+    with st.chat_message("assistant"):
+        answer_tokens = []
+        status_placeholder = st.empty()   # 用于显示/清除工具执行状态
+        stream_placeholder = st.empty()   # 用于逐 token 更新答案
 
-        paper = results[0]
-        if not results:
-            st.error("未找到相关文献，请将文献导入到zotero中")
-        
-        pdf_path = get_pdf_path(paper["itemID"])
-        with st.spinner("正在加载论文..."):
-            chunks, index = build_pipeline(pdf_path)
+        for token in run_agent(
+            user_input, 
+            my_tool_executor,
+            chat_history=st.session_state.chat_history,
+            current_title=st.session_state.current_title
+        ):
+            if token.startswith("__TOOL_STATUS__:"):
+                # 工具执行状态标记 —— 显示 spinner 提示，不写入答案
+                tool_name = token.split(":", 1)[1]
+                status_text = TOOL_STATUS_MAP.get(tool_name, f"正在执行 {tool_name}...")
+                status_placeholder.info(f"⚙️ {status_text}")
+            else:
+                # 真正的回答 token —— 清除状态提示，流式写入
+                status_placeholder.empty()
+                answer_tokens.append(token)
+                stream_placeholder.markdown("".join(answer_tokens))
 
-        st.session_state.current_chunks = chunks
-        st.session_state.current_index = index
-        st.session_state.current_title = paper["title"]
-        st.session_state.paper_history = []
-        answer = f"""
-                📖 已打开论文：{paper["title"]}\n
-                现在可以继续提问：
-                - 总结这篇论文
-                - 创新点是什么
-                - 作者为什么采用该方法
-                """
-        with st.chat_message("assistant"):
-            st.markdown(answer)
-            st.session_state.chat_history.append({"role":"assistant","content":answer})
-        
-    elif task == "ASK": 
-        if st.session_state.current_chunks is None:
-            answer = "请先打开一篇论文"
-        else:
-            with st.spinner("思考中..."):
-                with st.chat_message("assistant"):
-                    answer =  st.write_stream(
-                            ask_pdf(
-                                plan_result["query"],
-                                st.session_state.current_chunks,
-                                st.session_state.current_index,
-                                st.session_state.paper_history
-                            )   )
-            st.session_state.paper_history.append({"role":"user", "content":user_input})
-            st.session_state.paper_history.append({"role":"assistant", "content":answer})
-            st.session_state.chat_history.append({"role":"assistant", "content":answer})
-            st.stop()
+        answer = "".join(answer_tokens)
 
-    elif task == "REVIEW":
-        with st.spinner("搜索中..."):
-            with st.chat_message("assistant"):
-                answer = st.write_stream(
-                    literature_review(plan_result["keyword"]) )
-        st.session_state.chat_history.append({"role":"assistant", "content":answer})
-        st.stop()
+    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+    # 保存历史对话到本地 Markdown 文件
+    save_conversation(user_input, answer)

@@ -13,4 +13,4 @@ ZOTERO_DB_PATH = os.getenv("ZOTERO_DB_PATH")
 ZOTERO_STORAGE_PATH = os.getenv("ZOTERO_STORAGE_PATH")
 
 # search tool Configuration
-Paper_Searcg_BASE_URL = os.getenv("Literature_Search_BASE_URL")
+Paper_Search_BASE_URL = os.getenv("Literature_Search_BASE_URL")

@@ -1,6 +1,6 @@
 """文献搜索 OpenAlex API检索"""
 import requests
-from config import Paper_Searcg_BASE_URL
+from config import Paper_Search_BASE_URL
 # 定义恢复摘要的函数
 def reconstruct_abstract(inverted_index):
 
@@ -18,7 +18,7 @@ def reconstruct_abstract(inverted_index):
 # 定义搜索函数
 def search_papers(query, n_search):
     
-    url = (Paper_Searcg_BASE_URL)  
+    url = (Paper_Search_BASE_URL)  
     params = {
         "search": query,
         "per-page": n_search # 搜索的论文数量

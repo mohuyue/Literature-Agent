@@ -67,7 +67,7 @@ def build_zotero_index(papers):
 
     return index
 
-def search_zotero(
+def open_zotero_paper(
     query,
     papers,
     index,

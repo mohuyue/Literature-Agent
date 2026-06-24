@@ -26,7 +26,7 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Create .env file in the project root directory.
+⚠️ Create .env file in the project root directory.
 
 Here is an example in .env.example：
 
