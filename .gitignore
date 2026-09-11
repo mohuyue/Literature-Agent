@@ -33,3 +33,6 @@ Thumbs.db
 
 # Memory files
 memory/*.md
+
+rag/.paper_cache
+rag/.vision_cache

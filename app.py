@@ -5,18 +5,20 @@ from agents.tools import tool_executor
 from memory.save_conversation import save_conversation
 
 # 全局变量
-if "current_title" not in st.session_state:
-    st.session_state.current_title = None
-if "current_chunks" not in st.session_state:
-    st.session_state.current_chunks = None
-if "current_index" not in st.session_state:
-    st.session_state.current_index = None
+# if "current_title" not in st.session_state:
+#     st.session_state.current_title = None
+# if "current_chunks" not in st.session_state:
+#     st.session_state.current_chunks = None
+# if "current_index" not in st.session_state:
+#     st.session_state.current_index = None
 # 聊天对话历史
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-# 论文阅读历史
-if "paper_history" not in st.session_state:
-    st.session_state.paper_history = []
+
+# 多论文集合:
+if "loaded_papers" not in st.session_state:
+    # 结构: { "论文标题": {"chunks": [...], "index": faiss_index} }
+    st.session_state.loaded_papers = {}
 
 # 页面标题
 st.title("📚 Literature Reader Agent")
@@ -72,13 +74,13 @@ if user_input:
             user_input, 
             my_tool_executor,
             chat_history=st.session_state.chat_history,
-            current_title=st.session_state.current_title
+            loaded_titles=list(st.session_state.loaded_papers.keys())
         ):
             if token.startswith("__TOOL_STATUS__:"):
                 # 工具执行状态标记 —— 显示 spinner 提示，不写入答案
                 tool_name = token.split(":", 1)[1]
                 status_text = TOOL_STATUS_MAP.get(tool_name, f"正在执行 {tool_name}...")
-                status_placeholder.info(f"⚙️ {status_text}")
+                status_placeholder.info(f"{status_text}")
             else:
                 # 真正的回答 token —— 清除状态提示，流式写入
                 status_placeholder.empty()
