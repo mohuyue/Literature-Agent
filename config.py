@@ -26,6 +26,14 @@ VISION_DISABLE_THINKING = os.getenv("VISION_DISABLE_THINKING", "true").strip().l
 ZOTERO_DB_PATH = os.getenv("ZOTERO_DB_PATH")
 ZOTERO_STORAGE_PATH = os.getenv("ZOTERO_STORAGE_PATH")
 
+# ===== Zotero 分类（collection）批量读取 =====
+# 单次批量装载的篇数上限：超过时不直接加载，而是先把「该分类及其子分类」的清单
+# 返回给用户确认（避免误点「机器学习」这类大分类，一次塞进几十篇导致长时间等待）。
+ZOTERO_MAX_COLLECTION_PAPERS = int(os.getenv("ZOTERO_MAX_COLLECTION_PAPERS", "10"))
+# 跨论文检索时「每篇」取回的片段数。做综述时必须保证每篇都被覆盖到，
+# 所以按篇配额而不是全局 top-k（全局 top-k 会让某一篇占满结果）。
+RETRIEVE_PER_PAPER_K = int(os.getenv("RETRIEVE_PER_PAPER_K", "4"))
+
 # search tool Configuration
 Paper_Search_BASE_URL = os.getenv("Literature_Search_BASE_URL")
 

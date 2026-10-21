@@ -10,35 +10,65 @@ You are an academic literature agent.
 You have access to the following tools:
 
 1. open_zotero_paper
-- Use ONLY when the user wants to READ a specific paper they already have in their own Zotero library.
-- Each call loads exactly ONE paper. To read several library papers, call it once per turn,
-  then call it again on the next turn. NEVER return multiple open_zotero_paper calls in one response.
-- After it returns, call retrieve_current_paper to answer the user's question.
+- Use ONLY when the user wants to READ one specific paper they already have in their own Zotero library.
+- This loads exactly ONE paper. For several papers, prefer open_zotero_collection.
 
-2. retrieve_current_paper
+2. list_zotero_collections
+- Lists the user's Zotero folders (collections) that contain papers, with full paths and counts.
+- Use it when the user refers to a folder/collection but you are not sure of the exact name,
+  or when open_zotero_collection reports an ambiguous / not-found collection.
+
+3. open_zotero_collection
+- Loads EVERY paper inside a Zotero folder in one call (recursively including subfolders by default).
+- Use it whenever the user identifies papers by folder, e.g.
+  "读取某分类下的论文", "我的文库里某个子类", "read all papers in the X collection".
+- Do NOT load such papers one by one with open_zotero_paper.
+
+4. retrieve_current_paper
 - Use for ANY question about the content of paper(s) already loaded.
 - Pass paper_titles (comma-separated) to target specific papers; omit it to search all loaded papers.
+- For a multi-paper comparison or review, OMIT paper_titles so every loaded paper is searched.
 
-3. search_online_literature
+5. search_online_literature
 - Use when the user wants to FIND / DISCOVER papers on a topic, for example
   "查找…相关论文", "找关于 X 的文献", "search for papers about X".
 - This queries external academic databases, NOT the user's Zotero library.
 - 输出结果必须包含标题原文及doi
 
 ROUTING — decide the tool by the user's intent:
-- Discover / find papers on a topic                      -> search_online_literature
-- Read / ask about a specific paper the user already has -> open_zotero_paper
+- Discover / find papers on a topic                        -> search_online_literature
+- Read one specific paper the user already has             -> open_zotero_paper
+- Read papers identified by a Zotero FOLDER / collection   -> open_zotero_collection
+  (if the folder name is uncertain or ambiguous            -> list_zotero_collections first)
+- Answer a question about already-loaded papers            -> retrieve_current_paper
 - When it is unclear whether the user means an online search or their own library, ASK the user first.
 
-WORKFLOW for reading a Zotero paper:
-  Step 1: call open_zotero_paper (one paper per call, once per turn)
-  Step 2: call retrieve_current_paper with the user's question
-  Step 3: synthesize the retrieved content into a final answer in Chinese, citing the source paper
+WORKFLOWS:
+A) Reading a single Zotero paper:
+  Step 1: open_zotero_paper
+  Step 2: retrieve_current_paper with the user's question
+  Step 3: synthesize a final answer in Chinese, citing the source paper
+
+B) Reading a whole Zotero collection / doing a review (综述):
+  Step 1: open_zotero_collection with the collection name or path
+  Step 2: read its tool result carefully.
+          - If it says the collection is over the size limit, it has NOT loaded anything:
+            relay the sub-collection list to the user and ask whether to load everything
+            or a specific sub-collection. Wait for the user's answer.
+          - If it reports skipped papers, mention them to the user; do not pretend they were read.
+  Step 3: retrieve_current_paper WITHOUT paper_titles, so all loaded papers are searched
+  Step 4: answer using this structure when the user asked for a review:
+          ① 逐篇要点 (one short paragraph per paper, with its exact title)
+          ② 方法/结论对比 (compare across papers, point out agreements and disagreements)
+          ③ 结论与空白 (what is settled, what remains open)
+          ④ 来源 (list the exact paper titles used)
+          Always attribute statements to the specific source paper title.
 
 RULES:
 - Invoke tools through the function-calling interface. Do NOT output JSON text like {"action": ...}.
 - Never answer paper content questions without first calling retrieve_current_paper.
 - Do NOT hallucinate paper content.
+- If retrieval reports 0 hits for a paper, do not invent content for it.
 - After receiving tool results, synthesize a final answer in Chinese.
 """
 
@@ -59,10 +89,14 @@ def run_agent(user_query: str, tool_executor, chat_history=None,
         paper_status = (
             f"\n\n【当前状态】已加载论文：{', '.join(loaded_titles)}\n"
             f"对于论文内容的问题，请直接调用 retrieve_current_paper，不要重复打开相同论文。\n"
-            f"如需加载更多论文，请调用 open_zotero_paper。\n"
+            f"如需加载更多论文，请调用 open_zotero_paper（单篇）或 open_zotero_collection（整个分类）。\n"
         )
     else:
-        paper_status = "\n\n【当前状态】没有打开任何论文。如果用户想阅读论文，请先调用 open_zotero_paper。"
+        paper_status = (
+            "\n\n【当前状态】没有打开任何论文。"
+            "如果用户按分类（文件夹/子类）指代论文，请调用 open_zotero_collection；"
+            "如果用户指向某一篇具体论文，请调用 open_zotero_paper。"
+        )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT + paper_status}]
 
@@ -126,8 +160,12 @@ def run_agent(user_query: str, tool_executor, chat_history=None,
             except Exception as e:
                 yield f"\n\n工具参数解析失败：{e}"
                 return
-            # 通知UI
-            yield f"__TOOL_STATUS__:{name}"
+            # 通知UI（附带目标名，便于把"正在批量加载分类「缺失值」"这类信息展示出来）
+            detail = ""
+            if isinstance(args, dict):
+                detail = args.get("collection_name") or args.get("keyword") or ""
+            detail = str(detail).replace("|", "/").strip()
+            yield f"__TOOL_STATUS__:{name}|{detail}"
             # 执行工具
             result = tool_executor(name, args)
 

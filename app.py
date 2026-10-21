@@ -45,8 +45,10 @@ def my_tool_executor(name, args):
 
 # 工具名称 → 中文状态提示的映射
 TOOL_STATUS_MAP = {
-    "open_zotero_paper":       "📖 正在 Zotero 中检索并加载论文...",
-    "retrieve_current_paper":  "🔍 正在检索论文相关内容...",
+    "open_zotero_paper":        "📖 正在 Zotero 中检索并加载论文...",
+    "list_zotero_collections":  "🗂 正在读取 Zotero 分类结构...",
+    "open_zotero_collection":   "📚 正在批量加载分类下的论文（首次较慢，请稍候）...",
+    "retrieve_current_paper":   "🔍 正在检索论文相关内容...",
     "search_online_literature": "🌐 正在网络搜索相关文献...",
 }
 
@@ -78,8 +80,11 @@ if user_input:
         ):
             if token.startswith("__TOOL_STATUS__:"):
                 # 工具执行状态标记 —— 显示 spinner 提示，不写入答案
-                tool_name = token.split(":", 1)[1]
+                payload = token.split(":", 1)[1]
+                tool_name, _, detail = payload.partition("|")
                 status_text = TOOL_STATUS_MAP.get(tool_name, f"正在执行 {tool_name}...")
+                if detail:
+                    status_text += f"「{detail}」"
                 status_placeholder.info(f"{status_text}")
             else:
                 # 真正的回答 token —— 清除状态提示，流式写入
