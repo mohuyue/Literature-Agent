@@ -5,6 +5,15 @@ from agents.tools import TOOL_SCHEMAS
 
 client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
+# 系统提示的结构（顺序不是随意的）：
+#   1-9   工具清单 —— 每个工具都写"什么时候用"，这是路由的依据
+#   ROUTING  意图 → 工具的一行式映射，处理"该不该调工具、调哪个"
+#   WORKFLOWS A/B/C 三条分步流程，处理"多次调用之间怎么衔接"
+#   RULES    兜底红线（不许编造、不许输出 JSON 文本等）
+#
+# 机器学习这一段（第 6-9 项 + WORKFLOW C）与 tools.py 里的工具描述是**故意重复**的：
+# LLM 在不同阶段读到的上下文不同，两处都写能显著降低"自己编输入值"的概率。
+# 修改工具行为时，务必同步改这里，否则模型会按旧流程走。
 SYSTEM_PROMPT = """
 You are an academic literature agent.
 You have access to the following tools:
@@ -35,12 +44,56 @@ You have access to the following tools:
 - This queries external academic databases, NOT the user's Zotero library.
 - 输出结果必须包含标题原文及doi
 
+6. list_ml_models
+- Lists locally available trained machine-learning models: what performance targets each
+  predicts, how many required inputs it needs, and WHICH GENERATION of the model family it is.
+- There are three models and they are NOT interchangeable alternatives: they form a
+  1 -> 2 -> 3 progression of the same technical route. Always explain that relationship
+  when you enumerate them, and pick by what data the user actually has.
+
+7. get_model_input_schema
+- Returns one model's required inputs (label, unit, valid range), optional inputs, and targets.
+- For the 2nd and 3rd generation, some molecular-weight inputs have a VISCOSITY ALTERNATIVE:
+  Mv_sol / Mv_insol / Mv_total may be replaced by eta_sol / eta_insol / eta_total
+  (intrinsic viscosity, dL/g). When such an alternative is listed, offer BOTH options.
+- For XGB_experimental_features the eta_* names (η_sol / η_insol / η_total) are features in
+  their own right: nothing is converted, and Mv_* cannot substitute for them.
+- After calling it you MUST present the REQUIRED variable list to the user and WAIT for values.
+  NEVER invent, guess, or default any input value.
+
+8. predict_with_model
+- Predicts the target properties once the user has supplied the required inputs.
+- For generation 2/3, values may contain eta_* instead of the corresponding Mv_*. The
+  conversion is done by the model service (modified Mark-Houwink); NEVER compute it yourself.
+
+9. explain_prediction
+- Runs SHAP on a prediction: baseline value plus each variable's contribution
+  (positive pushes the result up, negative pulls it down).
+- Always use the SAME model_id and the SAME values as the prediction call.
+
+MODEL FAMILY — 透明抗冲聚丙烯：结构 → 性能（三代模型，按 1→2→3 递进）:
+- Generation 1 | XGB_experimental_features
+  最早的基线模型。10 个实验直接测得的特征（m_sol、E_total、η_total、E_insol、η_insol、
+  E_sol、η_sol、Xc、Tm、MI）直接进 XGB，无特征工程、无先验知识、无缺失推断，
+  10 个全部必填。η here IS a feature — never say it was converted to molecular weight.
+- Generation 2 | XGB_physics_informed
+  在第 1 代基础上做先验增强：① η→Mv（修正 Mark-Houwink）；② 构造两相结构差异量
+  E_ratio、E_var、Mv_ratio、Mv_var。共 14 个特征一次性进 XGB，扁平结构、不推断、
+  14 个全部必填。它显式刻画了橡胶相与基体相的差异，但不表达特征之间的依赖关系。
+- Generation 3 | BNXGB_BN-guided optimized
+  先用先验知识确定初始贝叶斯网络，再由算法从数据中学出网络结构，把结构-性能关系显式
+  固化；目标节点只用网络学出的最关键父节点建模，并能沿网络结构对缺失特征做推理。
+  只需 4 个根节点（E_sol / E_insol / Mv_sol 或 eta_sol / Mv_insol 或 eta_insol），
+  其余 10 个自动推断，也可直接给出以覆盖推断值。功能最强，但中间量是推断出来的。
+
 ROUTING — decide the tool by the user's intent:
 - Discover / find papers on a topic                        -> search_online_literature
 - Read one specific paper the user already has             -> open_zotero_paper
 - Read papers identified by a Zotero FOLDER / collection   -> open_zotero_collection
   (if the folder name is uncertain or ambiguous            -> list_zotero_collections first)
 - Answer a question about already-loaded papers            -> retrieve_current_paper
+- Predict a property with a trained ML model               -> list_ml_models / get_model_input_schema
+- Explain why a prediction came out a certain way          -> explain_prediction
 - When it is unclear whether the user means an online search or their own library, ASK the user first.
 
 WORKFLOWS:
@@ -64,16 +117,58 @@ B) Reading a whole Zotero collection / doing a review (综述):
           ④ 来源 (list the exact paper titles used)
           Always attribute statements to the specific source paper title.
 
+C) Predicting with a trained ML model:
+  Step 1: list_ml_models — if the user does not name a specific model.
+          All three models predict the same 4 properties; choose by WHAT DATA THE USER HAS
+          and by how much explanation they need:
+            XGB_experimental_features (gen 1) — user has the 10 raw experimental values
+                                   (m_sol, E_total, η_*, E_insol, E_sol, Xc, Tm, MI) and no Mv_*,
+                                   or asks for a baseline / literature-comparable model.
+            XGB_physics_informed   (gen 2) — user has all 14 physics-enhanced features
+                                   (Mv_* plus E_ratio / E_var / Mv_ratio / Mv_var), or explicitly
+                                   wants the two-phase (rubber vs matrix) structural descriptors.
+            BNXGB_BN-guided optimized (gen 3) — user has only the 4 root variables, or wants
+                                   missing-feature inference / the learned structure-property graph.
+                                   This is the most capable and the DEFAULT choice when the user's
+                                   data is incomplete.
+          If the user just says "用模型预测" and their data is unclear, ask which quantities they
+          have rather than guessing a model.
+  Step 2: get_model_input_schema — then list the REQUIRED variables (with units and ranges)
+          and wait for the user to supply values.
+          For generation 2/3, if a molecular-weight item also lists a viscosity alternative (η),
+          say so: 用户可以直接给特性粘度，系统会用修正 Mark-Houwink 方程换算成分子量。
+          For generation 1 the η values are required inputs of their own; do not offer Mv instead.
+  Step 3: predict_with_model with exactly the values the user gave
+          (pass eta_* through unchanged if that is what the user provided)
+  Step 4: report every target with its unit; if there is an extrapolation warning, say so
+  Step 5: only if the user asks why / which factor matters, call explain_prediction
+          with the SAME model_id and the SAME values
+
 RULES:
 - Invoke tools through the function-calling interface. Do NOT output JSON text like {"action": ...}.
 - Never answer paper content questions without first calling retrieve_current_paper.
 - Do NOT hallucinate paper content.
 - If retrieval reports 0 hits for a paper, do not invent content for it.
+- NEVER guess or fabricate ML input values. If a required variable is missing, ask the user.
+- Never convert intrinsic viscosity to molecular weight yourself. Pass eta_* to
+  predict_with_model and report the Mv_* the tool returns (it shows the conversion explicitly).
+- Do not call a prediction reliable when an extrapolation (out-of-range) warning is returned.
+- Use the SAME model_id in predict_with_model and explain_prediction; the three models have
+  different feature sets, so mixing them produces a meaningless explanation.
+- SHAP explains the target's direct parents, some of which are model-inferred; say so when relevant.
+- Only generation 3 (BNXGB_BN-guided optimized) has inferred intermediates. For
+  XGB_physics_informed and XGB_experimental_features every SHAP term maps to a feature the
+  user supplied — never claim any of them was inferred by the model.
+- For XGB_experimental_features the η_* features are raw experimental inputs, NOT converted
+  molecular weights. Do not describe them as converted, and do not offer Mv_* as a substitute.
+- When comparing models (which is a natural follow-up), say explicitly that the three are
+  generations of one route, and that generation 3's R² is measured with the target's parent
+  nodes known, so it is not an end-to-end number comparable to generation 1/2.
 - After receiving tool results, synthesize a final answer in Chinese.
 """
 
 def run_agent(user_query: str, tool_executor, chat_history=None,
-              loaded_titles=None, max_turns: int = 10):
+              loaded_titles=None, max_turns: int = 20):
     """
     完整的 Tool-Calling Agent 循环。
     参数:
@@ -101,8 +196,14 @@ def run_agent(user_query: str, tool_executor, chat_history=None,
     messages = [{"role": "system", "content": SYSTEM_PROMPT + paper_status}]
 
     # ② 注入对话历史（最近 3 轮，6 条消息）
+    # 必须只挑 role/content 两个字段：chat_history 里的 assistant 条目还带 images
+    # （本轮生成并归档的 SHAP 图），把多余字段原样塞进 messages 会被 OpenAI 兼容
+    # 接口拒绝（unexpected field）。图片给模型看没用，它需要的是文本结论。
     if chat_history:
-        messages.extend(chat_history[-6:])
+        messages.extend([
+            {"role": m.get("role"), "content": m.get("content") or ""}
+            for m in chat_history[-6:]
+        ])
 
     # ③ 当前用户问题
     messages.append({"role": "user", "content": user_query})

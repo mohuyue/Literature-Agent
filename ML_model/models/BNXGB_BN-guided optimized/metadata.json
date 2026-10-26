@@ -1,0 +1,455 @@
+{
+  "model_id": "BNXGB_BN-guided optimized",
+  "display_name": "透明抗冲聚丙烯：结构 → 性能（BN + XGB，第 3 代）",
+  "description": "模型族中的第 3 代（最终版）。先用先验知识确定初始贝叶斯网络（根节点=基础物性、公式节点=领域公式、线性节点=中间量、XGB 节点=性能），再由算法从数据中学出网络结构，把结构-性能的依赖关系显式固化；目标节点只用网络学出的最关键父节点建模，并能沿网络结构对缺失特征做推理。因此只需提供 4 个根节点，中间 10 个变量由网络自动推断；也可以直接给出它们以覆盖推断值。分子量允许用特性粘度替代：给 eta_sol / eta_insol / eta_total 即可，由修正 Mark-Houwink 方程自动换算成 Mv_sol / Mv_insol / Mv_total。",
+  "task": "regression",
+  "kind": "bn_node_graph",
+  "entry": {
+    "file": "model.pkl",
+    "loader": "pickle"
+  },
+  "framework": {
+    "python": "3.10+",
+    "xgboost": "2.1.0",
+    "scikit-learn": "1.5.1",
+    "numpy": "1.26.4",
+    "shap": "0.46.0"
+  },
+  "trained_on": {
+    "n_samples": 102,
+    "source_data": "透明抗冲二甲苯结构组成.xlsx（sheet=1）",
+    "cv": "KFold(5, shuffle=True, random_state=42)"
+  },
+  "metric_scope": "target_parents_given",
+  "metrics_note": "r2_oof / rmse_oof 由导出脚本用 pkl 中的 5 折模型重算：按 KFold(5, shuffle=True, random_state=42) 划分，第 i 折的样本只由第 i 个折模型预测，拼成完整 OOF 后统一计算 R² 与 RMSE（不是先算 5 个折的 R² 再平均）。三个模型使用同一套划分与同一口径，可直接横向比较。",
+  "exported_at": "2026-10-25 15:40:59",
+  "family": {
+    "name": "透明抗冲聚丙烯：结构 → 性能 模型族",
+    "stage": 3,
+    "stage_name": "贝叶斯网络引导的关键特征建模",
+    "stage_summary": "先验定网络 → 学结构 → 关键父节点 XGB，可补缺失",
+    "this_stage_adds": "用先验知识确定初始网络（根节点=基础物性、公式节点=领域公式、线性节点=中间量、XGB 节点=性能），再由算法从数据中学习贝叶斯网络结构，把「结构→性能」的依赖关系显式固化下来。目标节点只保留网络学出的最关键父节点（6~8 个，而不是全部 14 个）再建 XGB；同时因为网络有向，可以沿结构对缺失节点做推理——只给 4 个根节点也能出结果。",
+    "this_stage_limitation": "中间量是推断出来的，SHAP 会归因到这些推断值上，解释时要说明来源；网络结构由 102 条样本学得，样本外推时结构本身也可能失效。",
+    "lineage": [
+      {
+        "stage": 1,
+        "model_id": "XGB_experimental_features",
+        "stage_name": "实验特征直接建模（基线）",
+        "short": "10 个实验特征 → XGB，无先验、无推断",
+        "is_self": false
+      },
+      {
+        "stage": 2,
+        "model_id": "XGB_physics_informed",
+        "stage_name": "先验知识增强特征建模",
+        "short": "η→Mv + 4 个两相派生量，14 维 → XGB",
+        "is_self": false
+      },
+      {
+        "stage": 3,
+        "model_id": "BNXGB_BN-guided optimized",
+        "stage_name": "贝叶斯网络引导的关键特征建模",
+        "short": "先验定网络 → 学结构 → 关键父节点 XGB，可补缺失",
+        "is_self": true
+      }
+    ],
+    "progression_note": "三个模型按 1→2→3 递进，不是三个并列的候选。第 1 代直接用实验测得的特征建模，是基线；第 2 代在第 1 代特征基础上用先验知识做特征增强（η 换算成分子量、构造两相结构差异量）；第 3 代用贝叶斯网络把结构-性能关系显式学出来，目标节点只用最关键的特征，并能沿网络结构补全缺失特征。"
+  },
+  "selection_guide": [
+    "只有 4 个基础变量（E_sol、E_insol、Mv_sol 或 η_sol、Mv_insol 或 η_insol）或需要缺失特征推理 → 第 3 代 BNXGB_BN-guided optimized。",
+    "手上有完整的 14 个先验增强特征（含 Mv_* 与 E_ratio/E_var/Mv_ratio/Mv_var），想直接看「全部信息一次性回归」的效果 → 第 2 代 XGB_physics_informed。",
+    "手上只有 10 个实验测得的原始量（含 η 而没有 Mv），或需要与其他文献的实验模型对标、要一个不掺先验的基线 → 第 1 代 XGB_experimental_features。",
+    "三代模型不可混用：predict 用哪个 model_id，explain 就必须用同一个，因为三者的输入特征集合不同，交叉解释没有意义。",
+    "对比三代模型的精度时，注意口径不同：第 3 代的 R² 是「目标父节点已知」时的精度，不是「只给 4 个根节点」的端到端精度。"
+  ],
+  "targets": [
+    {
+      "name": "IS",
+      "label": "悬臂梁缺口冲击强度",
+      "unit": "kJ/m²",
+      "range": [
+        3.15,
+        51.65
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_insol",
+        "Mv_insol",
+        "E_var",
+        "Mv_sol",
+        "Mv_var"
+      ],
+      "metrics": {
+        "r2_oof": 0.7584,
+        "rmse_oof": 6.25,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "FM",
+      "label": "弯曲模量",
+      "unit": "MPa",
+      "range": [
+        427.9,
+        1484.72
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_insol",
+        "Mv_insol",
+        "E_ratio",
+        "Mv_var",
+        "Xc",
+        "Tm"
+      ],
+      "metrics": {
+        "r2_oof": 0.7764,
+        "rmse_oof": 78.58,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "HZ",
+      "label": "雾度",
+      "unit": "%",
+      "range": [
+        7.361667,
+        69.7
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "Mv_insol",
+        "E_sol",
+        "E_var",
+        "Mv_ratio",
+        "Mv_var",
+        "Xc"
+      ],
+      "metrics": {
+        "r2_oof": 0.6334,
+        "rmse_oof": 7.316,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "LT",
+      "label": "透光率",
+      "unit": "%",
+      "range": [
+        60.9,
+        86.6
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "Mv_insol",
+        "E_sol",
+        "Mv_ratio",
+        "Mv_var"
+      ],
+      "metrics": {
+        "r2_oof": 0.7218,
+        "rmse_oof": 2.443,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    }
+  ],
+  "inputs": {
+    "required": [
+      {
+        "name": "E_sol",
+        "label": "可溶组分乙烯含量",
+        "unit": "wt%",
+        "range": [
+          8.37,
+          35.11
+        ]
+      },
+      {
+        "name": "E_insol",
+        "label": "不溶组分乙烯含量",
+        "unit": "wt%",
+        "range": [
+          1.41,
+          6.9
+        ]
+      },
+      {
+        "name": "Mv_sol",
+        "label": "可溶组分粘均分子量",
+        "unit": "g/mol",
+        "range": [
+          19586.919877,
+          217242.438488
+        ],
+        "alternatives": [
+          "eta_sol"
+        ]
+      },
+      {
+        "name": "Mv_insol",
+        "label": "不溶组分粘均分子量",
+        "unit": "g/mol",
+        "range": [
+          192485.941685,
+          262763.202018
+        ],
+        "alternatives": [
+          "eta_insol"
+        ]
+      }
+    ],
+    "optional": [
+      {
+        "name": "m_sol",
+        "label": "可溶物含量",
+        "unit": "wt%",
+        "range": [
+          6.26,
+          39.59
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "E_total",
+          "E_insol",
+          "Mv_insol",
+          "Mv_sol"
+        ]
+      },
+      {
+        "name": "E_total",
+        "label": "总乙烯含量",
+        "unit": "wt%",
+        "range": [
+          -0.52,
+          9.74
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "E_insol",
+          "E_sol"
+        ]
+      },
+      {
+        "name": "Mv_total",
+        "label": "总粘均分子量",
+        "unit": "g/mol",
+        "range": [
+          156895.658042,
+          254781.044546
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "Mv_insol",
+          "Mv_sol"
+        ],
+        "alternatives": [
+          "eta_total"
+        ]
+      },
+      {
+        "name": "Xc",
+        "label": "结晶度",
+        "unit": "%",
+        "range": [
+          27.062147,
+          54.983051
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "m_sol",
+          "E_insol",
+          "Mv_insol"
+        ]
+      },
+      {
+        "name": "Tm",
+        "label": "熔点",
+        "unit": "°C",
+        "range": [
+          153.58,
+          167.42
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "Mv_total",
+          "Mv_insol",
+          "E_sol",
+          "Mv_sol",
+          "Xc"
+        ]
+      },
+      {
+        "name": "MI",
+        "label": "熔融指数",
+        "unit": "g/10min",
+        "range": [
+          14.0,
+          57.6
+        ],
+        "derived_by": "linear",
+        "parents": [
+          "m_sol",
+          "Mv_total",
+          "Mv_insol",
+          "Mv_sol"
+        ]
+      },
+      {
+        "name": "E_ratio",
+        "label": "乙烯含量比 E_sol/E_insol",
+        "unit": "-",
+        "range": [
+          3.334873,
+          13.951456
+        ],
+        "derived_by": "formula",
+        "parents": [
+          "E_insol",
+          "E_sol"
+        ],
+        "formula_type": "ratio",
+        "formula_inputs": [
+          "E_sol",
+          "E_insol"
+        ]
+      },
+      {
+        "name": "E_var",
+        "label": "乙烯含量加权方差",
+        "unit": "-",
+        "range": [
+          4.988901,
+          193.846288
+        ],
+        "derived_by": "formula",
+        "parents": [
+          "m_sol",
+          "E_insol",
+          "E_sol"
+        ],
+        "formula_type": "weighted_var",
+        "formula_inputs": [
+          "m_sol",
+          "E_sol",
+          "E_insol",
+          "E_total"
+        ]
+      },
+      {
+        "name": "Mv_ratio",
+        "label": "分子量比 Mv_sol/Mv_insol",
+        "unit": "-",
+        "range": [
+          0.081916,
+          0.900017
+        ],
+        "derived_by": "formula",
+        "parents": [
+          "Mv_insol",
+          "Mv_sol"
+        ],
+        "formula_type": "ratio",
+        "formula_inputs": [
+          "Mv_sol",
+          "Mv_insol"
+        ]
+      },
+      {
+        "name": "Mv_var",
+        "label": "分子量加权方差",
+        "unit": "-",
+        "range": [
+          397958331.774181,
+          5138914977.69264
+        ],
+        "derived_by": "formula",
+        "parents": [
+          "m_sol",
+          "Mv_insol",
+          "Mv_sol"
+        ],
+        "formula_type": "weighted_var",
+        "formula_inputs": [
+          "m_sol",
+          "Mv_sol",
+          "Mv_insol",
+          "Mv_total"
+        ]
+      }
+    ]
+  },
+  "viscosity_conversion": {
+    "enabled": true,
+    "method": "modified_mark_houwink",
+    "equation": "M = ( [η] / ( K_PE * (2/3 + 1/3 * W_E)^(alpha+1) ) )^(1/alpha)",
+    "K_PE": 0.000406,
+    "alpha": 0.725,
+    "eta_unit": "dL/g",
+    "mw_unit": "g/mol",
+    "rules": [
+      {
+        "eta": "eta_sol",
+        "eta_label": "可溶组分特性粘度",
+        "eta_unit": "dL/g",
+        "eta_range": [
+          0.28,
+          1.84
+        ],
+        "ethylene_input": "E_sol",
+        "target": "Mv_sol",
+        "target_unit": "g/mol"
+      },
+      {
+        "eta": "eta_insol",
+        "eta_label": "不溶组分特性粘度",
+        "eta_unit": "dL/g",
+        "eta_range": [
+          1.42,
+          1.77
+        ],
+        "ethylene_input": "E_insol",
+        "target": "Mv_insol",
+        "target_unit": "g/mol"
+      },
+      {
+        "eta": "eta_total",
+        "eta_label": "总体特性粘度",
+        "eta_unit": "dL/g",
+        "eta_range": [
+          1.28,
+          1.74
+        ],
+        "ethylene_input": "E_total",
+        "target": "Mv_total",
+        "target_unit": "g/mol"
+      }
+    ],
+    "note": "用户可以直接提供 eta_* 代替对应的 Mv_*，由 worker 按修正 Mark-Houwink 方程换算。同时提供两者时，以用户直接给出的 Mv_* 为准。"
+  },
+  "inference": {
+    "missing_policy": "bn_infer",
+    "fill_order": "auto_topological",
+    "note": "缺少的可选变量会按拓扑序自动推断；用户给出的值优先于推断值。"
+  },
+  "shap": {
+    "explainer": "TreeExplainer",
+    "aggregate": "mean_over_5_folds",
+    "max_display": 10,
+    "note": "SHAP 归因于目标的直接父节点，其中部分父节点本身是模型推断出来的。"
+  },
+  "source_artifact": "BN-guided optimized model.pkl"
+}

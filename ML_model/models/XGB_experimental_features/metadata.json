@@ -1,0 +1,306 @@
+{
+  "model_id": "XGB_experimental_features",
+  "display_name": "透明抗冲聚丙烯：实验特征 → 性能（纯 XGBoost，第 1 代）",
+  "description": "模型族中的第 1 代，也是最早的基线模型：不做任何特征工程、不引入先验知识、不做缺失推断，直接把 10 个实验测得的特征（m_sol、E_total、η_total、E_insol、η_insol、E_sol、η_sol、Xc、Tm、MI）输入 XGBoost 回归 4 个性能指标。这里的特性粘度是模型的直接输入特征，不会换算成分子量。适合只有这 10 个实验量、或需要与其他文献的实验模型对标时使用；若已有分子量或想要更强精度，请改用第 2 代 XGB_physics_informed 或第 3 代 BNXGB_BN-guided optimized。",
+  "task": "regression",
+  "kind": "flat_xgb",
+  "entry": {
+    "file": "model.pkl",
+    "loader": "pickle"
+  },
+  "framework": {
+    "python": "3.10+",
+    "xgboost": "2.1.0",
+    "scikit-learn": "1.5.1",
+    "numpy": "1.26.4",
+    "shap": "0.46.0"
+  },
+  "trained_on": {
+    "n_samples": 102,
+    "source_data": "透明抗冲二甲苯结构组成.xlsx（sheet=1）",
+    "cv": "KFold(5, shuffle=True, random_state=42)"
+  },
+  "metric_scope": "all_10_experimental_features_given",
+  "metrics_note": "r2_oof / rmse_oof 由导出脚本用 pkl 中的 5 折模型重算：按 KFold(5, shuffle=True, random_state=42) 划分，第 i 折的样本只由第 i 个折模型预测，拼成完整 OOF 后统一计算 R² 与 RMSE（不是先算 5 个折的 R² 再平均）。三个模型使用同一套划分与同一口径，可直接横向比较。",
+  "exported_at": "2026-10-25 15:40:59",
+  "family": {
+    "name": "透明抗冲聚丙烯：结构 → 性能 模型族",
+    "stage": 1,
+    "stage_name": "实验特征直接建模（基线）",
+    "stage_summary": "10 个实验特征 → XGB，无先验、无推断",
+    "this_stage_adds": "无。只用实验直接测得的 10 个量：m_sol、E_total、η_total、E_insol、η_insol、E_sol、η_sol、Xc、Tm、MI。",
+    "this_stage_limitation": "维度低且没有刻画两相结构差异：分子量信息只有特性粘度一个标量，橡胶相/基体相的相对大小与离散程度都没有显式表达。",
+    "lineage": [
+      {
+        "stage": 1,
+        "model_id": "XGB_experimental_features",
+        "stage_name": "实验特征直接建模（基线）",
+        "short": "10 个实验特征 → XGB，无先验、无推断",
+        "is_self": true
+      },
+      {
+        "stage": 2,
+        "model_id": "XGB_physics_informed",
+        "stage_name": "先验知识增强特征建模",
+        "short": "η→Mv + 4 个两相派生量，14 维 → XGB",
+        "is_self": false
+      },
+      {
+        "stage": 3,
+        "model_id": "BNXGB_BN-guided optimized",
+        "stage_name": "贝叶斯网络引导的关键特征建模",
+        "short": "先验定网络 → 学结构 → 关键父节点 XGB，可补缺失",
+        "is_self": false
+      }
+    ],
+    "progression_note": "三个模型按 1→2→3 递进，不是三个并列的候选。第 1 代直接用实验测得的特征建模，是基线；第 2 代在第 1 代特征基础上用先验知识做特征增强（η 换算成分子量、构造两相结构差异量）；第 3 代用贝叶斯网络把结构-性能关系显式学出来，目标节点只用最关键的特征，并能沿网络结构补全缺失特征。"
+  },
+  "selection_guide": [
+    "只有 4 个基础变量（E_sol、E_insol、Mv_sol 或 η_sol、Mv_insol 或 η_insol）或需要缺失特征推理 → 第 3 代 BNXGB_BN-guided optimized。",
+    "手上有完整的 14 个先验增强特征（含 Mv_* 与 E_ratio/E_var/Mv_ratio/Mv_var），想直接看「全部信息一次性回归」的效果 → 第 2 代 XGB_physics_informed。",
+    "手上只有 10 个实验测得的原始量（含 η 而没有 Mv），或需要与其他文献的实验模型对标、要一个不掺先验的基线 → 第 1 代 XGB_experimental_features。",
+    "三代模型不可混用：predict 用哪个 model_id，explain 就必须用同一个，因为三者的输入特征集合不同，交叉解释没有意义。",
+    "对比三代模型的精度时，注意口径不同：第 3 代的 R² 是「目标父节点已知」时的精度，不是「只给 4 个根节点」的端到端精度。"
+  ],
+  "targets": [
+    {
+      "name": "IS",
+      "label": "悬臂梁缺口冲击强度",
+      "unit": "kJ/m²",
+      "range": [
+        3.15,
+        51.65
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "η_total",
+        "E_insol",
+        "η_insol",
+        "E_sol",
+        "η_sol",
+        "Xc",
+        "Tm",
+        "MI"
+      ],
+      "metrics": {
+        "r2_oof": 0.665,
+        "rmse_oof": 7.36,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "FM",
+      "label": "弯曲模量",
+      "unit": "MPa",
+      "range": [
+        427.9,
+        1484.72
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "η_total",
+        "E_insol",
+        "η_insol",
+        "E_sol",
+        "η_sol",
+        "Xc",
+        "Tm",
+        "MI"
+      ],
+      "metrics": {
+        "r2_oof": 0.7482,
+        "rmse_oof": 83.388,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "HZ",
+      "label": "雾度",
+      "unit": "%",
+      "range": [
+        7.361667,
+        69.7
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "η_total",
+        "E_insol",
+        "η_insol",
+        "E_sol",
+        "η_sol",
+        "Xc",
+        "Tm",
+        "MI"
+      ],
+      "metrics": {
+        "r2_oof": 0.3589,
+        "rmse_oof": 9.675,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    },
+    {
+      "name": "LT",
+      "label": "透光率",
+      "unit": "%",
+      "range": [
+        60.9,
+        86.6
+      ],
+      "node_type": "xgb",
+      "n_fold_models": 5,
+      "parents": [
+        "m_sol",
+        "E_total",
+        "η_total",
+        "E_insol",
+        "η_insol",
+        "E_sol",
+        "η_sol",
+        "Xc",
+        "Tm",
+        "MI"
+      ],
+      "metrics": {
+        "r2_oof": 0.6717,
+        "rmse_oof": 2.654,
+        "n_samples": 102,
+        "cv": "KFold(5, shuffle=True, random_state=42)"
+      }
+    }
+  ],
+  "inputs": {
+    "required": [
+      {
+        "name": "m_sol",
+        "label": "可溶物含量",
+        "unit": "wt%",
+        "range": [
+          6.26,
+          39.59
+        ]
+      },
+      {
+        "name": "E_total",
+        "label": "总乙烯含量",
+        "unit": "wt%",
+        "range": [
+          -0.52,
+          9.74
+        ]
+      },
+      {
+        "name": "η_total",
+        "label": "总体特性粘度",
+        "unit": "dL/g",
+        "range": [
+          1.28,
+          1.74
+        ]
+      },
+      {
+        "name": "E_insol",
+        "label": "不溶组分乙烯含量",
+        "unit": "wt%",
+        "range": [
+          1.41,
+          6.9
+        ]
+      },
+      {
+        "name": "η_insol",
+        "label": "不溶组分特性粘度",
+        "unit": "dL/g",
+        "range": [
+          1.42,
+          1.77
+        ]
+      },
+      {
+        "name": "E_sol",
+        "label": "可溶组分乙烯含量",
+        "unit": "wt%",
+        "range": [
+          8.37,
+          35.11
+        ]
+      },
+      {
+        "name": "η_sol",
+        "label": "可溶组分特性粘度",
+        "unit": "dL/g",
+        "range": [
+          0.28,
+          1.84
+        ]
+      },
+      {
+        "name": "Xc",
+        "label": "结晶度",
+        "unit": "%",
+        "range": [
+          27.062147,
+          54.983051
+        ]
+      },
+      {
+        "name": "Tm",
+        "label": "熔点",
+        "unit": "°C",
+        "range": [
+          153.58,
+          167.42
+        ]
+      },
+      {
+        "name": "MI",
+        "label": "熔融指数",
+        "unit": "g/10min",
+        "range": [
+          14.0,
+          57.6
+        ]
+      }
+    ],
+    "optional": []
+  },
+  "viscosity_conversion": {
+    "enabled": false,
+    "method": "modified_mark_houwink",
+    "equation": "M = ( [η] / ( K_PE * (2/3 + 1/3 * W_E)^(alpha+1) ) )^(1/alpha)",
+    "K_PE": 0.000406,
+    "alpha": 0.725,
+    "eta_unit": "dL/g",
+    "mw_unit": "g/mol",
+    "rules": [],
+    "note": "本模型的 η_sol / η_insol / η_total 是直接输入特征，不做 η→Mv 换算。如果用户手里只有分子量 Mv_* 而没有特性粘度，本模型无法使用——请改用第 2 代 XGB_physics_informed 或第 3 代 BNXGB_BN-guided optimized。"
+  },
+  "input_aliases": {
+    "eta_sol": "η_sol",
+    "eta_insol": "η_insol",
+    "eta_total": "η_total"
+  },
+  "inference": {
+    "missing_policy": "error",
+    "fill_order": null,
+    "note": "扁平模型，10 个实验特征全部必填；缺任何一个都会报错，不会自动推断。"
+  },
+  "shap": {
+    "explainer": "TreeExplainer",
+    "aggregate": "mean_over_5_folds",
+    "max_display": 10,
+    "note": "10 个特征都是用户直接提供的实验量，SHAP 贡献可直接归因到输入；其中 η_* 是特性粘度本身，不是换算出来的分子量。"
+  },
+  "source_artifact": "model.pkl"
+}

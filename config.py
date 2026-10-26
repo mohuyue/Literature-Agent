@@ -44,3 +44,20 @@ Paper_Search_BASE_URL = os.getenv("Literature_Search_BASE_URL")
 PIPELINE_VERSION = "1"
 # embedding 模型标识：换模型 → 向量维度可能变化 → 旧索引不可用，故纳入缓存键。
 EMBED_MODEL_ID = "AI-ModelScope/bge-small-en-v1.5"
+
+# ===== 机器学习模型推理（ml/）=====
+# 重要：推理必须在【训练环境】里跑，不能装进 Agent 所在环境。
+#   Agent 环境 literature_agent：numpy 2.4.6 / sklearn 1.9.0
+#   训练环境 newenv：numpy 1.26.4 / sklearn 1.5.1 / xgboost 2.1.0 / shap 0.46.0
+# pkl 由 sklearn 1.5.1 + xgboost 2.1.0 序列化，跨版本加载可能静默改变行为；
+# 且 shap 依赖 numba（要求 numpy<2.3），硬装会连带降级 numpy 并波及 torch/faiss。
+# 因此 Agent 侧只做 subprocess 调用，模型推理全部在 ML_PYTHON 指定的环境执行。
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+# 训练环境的解释器。换机器 / 换 conda 环境时只需改这里（或写进 .env），不动代码。
+ML_PYTHON = os.getenv("ML_PYTHON") or r"E:\anaconda\envs\newenv\python.exe"
+# 发布区：只放 export_models.py 导出的 {model.pkl, metadata.json}。
+# 训练原始产物在 ML_model/.local_model_train/（输入），运行时不读那边，
+# 避免"训练文件换了但 Agent 还在用旧模型"这类混淆。
+ML_MODELS_DIR = os.getenv("ML_MODELS_DIR") or os.path.join(_PROJECT_ROOT, "ML_model", "models")
+# 单次推理超时（含 python 冷启动 + xgboost 导入，通常 1~3s；给足余量）
+ML_WORKER_TIMEOUT = float(os.getenv("ML_WORKER_TIMEOUT", "120"))
